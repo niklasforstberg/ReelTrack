@@ -60,3 +60,6 @@ artifacts/
 
 # Local development settings
 appsettings.Development.json
+concept.md
+database_layout.json
+db-schema.sql
