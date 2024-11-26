@@ -61,4 +61,9 @@ public class AuthService
             System.Text.Encoding.UTF8.GetBytes(password)));
         return parts[1] == computedHash;
     }
+
+    public string GenerateDevToken(User user)
+    {
+        return _jwtService.GenerateToken(user, TimeSpan.FromDays(365));
+    }
 }

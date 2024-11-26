@@ -26,5 +26,24 @@ public static class AuthEndpoints
         })
         .WithName("Login")
         .WithOpenApi();
+
+        app.MapPost("/auth/dev-token", async (AuthService auth) =>
+        {
+            if (app.Environment.IsDevelopment())
+            {
+                var devUser = new User
+                {
+                    Id = 1,
+                    Email = "dev@local",
+                    IsAdmin = true,
+                    FamilyId = 1
+                };
+                var token = auth.GenerateDevToken(devUser);
+                return Results.Ok(new { Token = token });
+            }
+            return Results.NotFound();
+        })
+        .WithName("DevToken")
+        .WithOpenApi();
     }
 }
