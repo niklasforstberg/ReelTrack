@@ -131,9 +131,9 @@ public static class AuthEndpoints
     {
         var claims = new List<Claim>
         {
-            new("email", user.Email),
-            new("id", user.Id.ToString()),
-            new("isAdmin", user.IsAdmin.ToString()),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Role, user.IsAdmin ? "Admin" : "User"),
             new("familyId", user.FamilyId?.ToString() ?? "")
         };
 

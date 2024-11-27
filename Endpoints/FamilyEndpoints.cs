@@ -13,7 +13,7 @@ public static class FamilyEndpoints
     {
         app.MapGet("/family", [Authorize] async (HttpContext ctx, ReelTrackDbContext db) =>
         {
-            var familyId = ctx.User.FindFirst("FamilyId")?.Value;
+            var familyId = ctx.User.FindFirst("familyId")?.Value;
             if (string.IsNullOrEmpty(familyId)) return Results.NotFound();
 
             var family = await db.Families
@@ -43,7 +43,7 @@ public static class FamilyEndpoints
 
         app.MapGet("/family/members", [Authorize] async (HttpContext ctx, ReelTrackDbContext db) =>
         {
-            var familyId = ctx.User.FindFirst("FamilyId")?.Value;
+            var familyId = ctx.User.FindFirst("familyId")?.Value;
             if (string.IsNullOrEmpty(familyId)) return Results.NotFound();
 
             var members = await db.Users
@@ -84,15 +84,24 @@ public static class FamilyEndpoints
             user.IsAdmin = true;
             await db.SaveChangesAsync();
 
-            return Results.Ok(family);
+            return Results.Ok(new FamilyDto
+            {
+                Id = family.Id,
+                Name = family.Name,
+                InviteCode = family.InviteCode,
+                Members = new List<UserDto>
+                {
+                    new UserDto(user.Id, user.Email, user.Name, user.IsAdmin, user.FamilyId)
+                }
+            });
         })
         .WithName("CreateFamily")
         .WithOpenApi();
 
         app.MapPut("/family", [Authorize] async (UpdateFamilyRequest request, HttpContext ctx, ReelTrackDbContext db) =>
         {
-            var familyId = ctx.User.FindFirst("FamilyId")?.Value;
-            var isAdmin = bool.Parse(ctx.User.FindFirst("IsAdmin")?.Value ?? "false");
+            var familyId = ctx.User.FindFirst("familyId")?.Value;
+            var isAdmin = ctx.User.IsInRole("Admin");
 
             if (string.IsNullOrEmpty(familyId) || !isAdmin)
                 return Results.Forbid();
@@ -110,8 +119,8 @@ public static class FamilyEndpoints
 
         app.MapDelete("/family", [Authorize] async (HttpContext ctx, ReelTrackDbContext db) =>
         {
-            var familyId = ctx.User.FindFirst("FamilyId")?.Value;
-            var isAdmin = bool.Parse(ctx.User.FindFirst("IsAdmin")?.Value ?? "false");
+            var familyId = ctx.User.FindFirst("familyId")?.Value;
+            var isAdmin = ctx.User.IsInRole("Admin");
 
             if (string.IsNullOrEmpty(familyId) || !isAdmin)
                 return Results.Forbid();
