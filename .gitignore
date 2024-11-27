@@ -64,3 +64,5 @@ concept.md
 database_layout.json
 db-schema.sql
 dev-token.txt
+localhost+2.pem
+localhost+2-key.pem

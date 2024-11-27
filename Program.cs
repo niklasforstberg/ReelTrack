@@ -6,8 +6,21 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using ReelTrack.Services;
 using ReelTrack.Endpoints;
+using System.Security.Cryptography.X509Certificates;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.UseKestrel(options =>
+{
+    options.ListenAnyIP(7235, listenOptions =>
+    {
+        var cert = X509Certificate2.CreateFromPemFile(
+            "localhost+2.pem",  // your public key
+            "localhost+2-key.pem" // your private key
+        );
+        listenOptions.UseHttps(cert);
+    });
+});
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
