@@ -4,62 +4,123 @@ using ReelTrack.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using ReelTrack.Services;
 using ReelTrack.Endpoints;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.OpenApi.Models;
+using System.Text.Json;
+using Microsoft.AspNetCore.OpenApi;
+using System.Collections.Generic;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseKestrel(options =>
 {
-    options.ListenAnyIP(7235, listenOptions =>
+    options.ListenLocalhost(7235, listenOptions =>
     {
         var cert = X509Certificate2.CreateFromPemFile(
-            "localhost+2.pem",  // your public key
-            "localhost+2-key.pem" // your private key
+            "localhost+2.pem",
+            "localhost+2-key.pem"
         );
         listenOptions.UseHttps(cert);
     });
 });
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 builder.Services.AddDbContext<ReelTrackDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add JWT configuration
-var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>();
-if (jwtSettings == null)
-{
-    throw new InvalidOperationException("JWT settings are not configured properly in appsettings.json");
-}
-
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-}).AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtSettings.Issuer,
-        ValidAudience = jwtSettings.Audience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key))
-    };
-});
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                Console.WriteLine("Token validated successfully");
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                var error = context.Exception;
+                if (error is SecurityTokenExpiredException)
+                    Console.WriteLine("Token has expired");
+                else if (error is SecurityTokenInvalidSignatureException)
+                    Console.WriteLine("Invalid token signature");
+                else if (error is SecurityTokenInvalidIssuerException)
+                    Console.WriteLine($"Invalid issuer. Expected: {options.TokenValidationParameters.ValidIssuer}");
+                else if (error is SecurityTokenInvalidAudienceException)
+                    Console.WriteLine($"Invalid audience. Expected: {options.TokenValidationParameters.ValidAudience}");
+
+                Console.WriteLine($"Full error: {error}");
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+
+                var result = JsonSerializer.Serialize(new
+                {
+                    error = context.Error,
+                    errorDescription = context.ErrorDescription,
+                    token = context.Request.Headers["Authorization"].ToString(),
+                    expectedIssuer = options.TokenValidationParameters.ValidIssuer,
+                    expectedAudience = options.TokenValidationParameters.ValidAudience,
+                    providedKey = options.TokenValidationParameters.IssuerSigningKey?.KeyId
+                });
+                return context.Response.WriteAsync(result);
+            }
+        };
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? string.Empty))
+        };
+    });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<JwtService>();
-builder.Services.AddScoped<AuthService>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin",
+        builder => builder.AllowAnyOrigin()
+                         .AllowAnyHeader()
+                         .AllowAnyMethod());
+});
 
 var app = builder.Build();
 
@@ -75,6 +136,11 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapAuthEndpoints();
+app.UseCors("AllowSpecificOrigin");
+
+app.MapAuthEndpoints(app.Configuration);
+app.MapFamilyEndpoints();
+
+Console.WriteLine($"Current environment: {app.Environment.EnvironmentName}");
 
 app.Run();
